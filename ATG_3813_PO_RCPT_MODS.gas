@@ -1,0 +1,102 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+V.Local.bPORcpts.Declare
+V.Local.iCount.Declare
+V.Local.iCt.Declare
+V.Local.iQty.Declare
+V.Local.iRowCt.Declare
+V.Local.sLine.Declare
+V.Local.sLot.Declare
+V.Local.sMsg.Declare
+V.Local.sParts.Declare
+V.Local.sPO.Declare
+V.Local.sSql.Declare
+
+
+'Pre-Ok Hook
+F.Intrinsic.Control.If(V.Caller.Hook,=,15041)
+	V.Local.bPORcpts.Set(True)
+'Pre-Exit Hook
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,15068)
+	V.Local.bPORcpts.Set(True)
+F.Intrinsic.Control.Else
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Local.bPORcpts,=,True)
+	V.Local.sPO.Set(V.Passed.000002)
+	'Exit if PO not selected
+	F.Intrinsic.Control.If(V.Local.sPO.Trim,=,"0")
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.endif
+	F.Intrinsic.String.LPad(V.Local.sPO,"0",7,V.Local.sPO)
+
+	'Load BDF
+	F.Intrinsic.BDF.Load("POREC","AUX001")
+	F.Intrinsic.BDF.ReadRowCount("POREC",V.Local.iRowCt)
+	F.Intrinsic.Math.Sub(V.Local.iRowCt,1,V.Local.iRowCt)
+
+	F.ODBC.Connection!Con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+	F.Intrinsic.Control.For(V.Local.iCt,0,V.Local.iRowCt,1)
+		V.Local.iCount.Set(0)
+		F.Intrinsic.BDF.ReadRow("POREC",V.Local.iCt,V.Local.sLine)
+		F.Intrinsic.String.Split(V.Local.sLine,"|~|",V.Local.sLine)
+		F.Intrinsic.String.RPad(V.Local.sLine(0),"0",4,V.Local.sLine(0))
+		'# of parts in inventory
+		F.Intrinsic.String.Concat("select Qty_Received, User_1 from PO_LINES where purchase_order='",V.Local.sPO,"' and Record_No='",V.Local.sLine(0),"'",V.Local.ssql)
+		F.ODBC.Connection!Con.OpenLocalRecordsetRO("rstPO",V.Local.sSql)
+		F.Intrinsic.Control.If(V.ODBC.Con!rstPO.EOF,=,False)
+			F.Intrinsic.Math.Add(V.Local.sLine(10),V.ODBC.Con!rstPO.FieldVal!Qty_Received,V.Local.iQty)
+			V.Local.sLot.set(V.ODBC.Con!rstPO.FieldVal!User_1)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Con!rstPO.Close
+		'# of rec in Item_Master
+		F.Intrinsic.Control.If(V.Local.iQty,>,0)
+			F.Intrinsic.String.Concat("select Count(Part) as Rec_Ct from ITEM_MASTER where part = '",V.Local.sLine(1),"' and RTrim(lot)='",V.Local.sLot.Trim,"'",V.Local.sSql)
+			F.ODBC.Connection!Con.OpenLocalRecordsetRO("rstCt",V.Local.sSql)
+			F.Intrinsic.Control.If(V.ODBC.Con!rstCt.EOF,=,False)
+				V.Local.iCount.Set(V.ODBC.Con!rstCt.FieldVal!Rec_Ct)
+			F.Intrinsic.Control.EndIf
+			F.ODBC.Con!rstCt.Close
+		F.Intrinsic.Control.EndIf
+		'Parts in Inv < Item_Mstr parts
+		F.Intrinsic.Control.If(V.Local.iCount,<,V.Local.iQty)
+			F.Intrinsic.String.Concat(V.Local.sParts,"*!*",V.Local.sLine(1),V.Local.sParts)
+		F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.Next(V.Local.iCt)
+
+	'Stop save/exit
+	F.Intrinsic.Control.If(V.Local.sParts.Trim,<>,"")
+		F.Intrinsic.String.Concat(V.Local.sParts,V.Ambient.NewLine,V.Local.sParts)
+		F.Intrinsic.String.Replace(V.Local.sParts,"*!*",V.Ambient.NewLine,V.Local.sParts)
+		F.Intrinsic.String.Concat("Part(s): ",V.Local.sParts," Missing Matching Item Master Records.",V.Local.sMsg)
+		F.Intrinsic.UI.Msgbox(V.Local.sMsg)
+		V.Passed.777777.Set(1)
+	F.Intrinsic.Control.EndIf
+
+	F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$0$}$ATG_PO_RCPT_MODS$}$CHANDANA$}$5/7/2012
+${$1$}$$}$$}$1$}$15068$}$PO RECEIPTS (PUS100-PB-EXIT-PRE-HOOK)$}$5/7/2012 8:48:21 AM$}$(Program: PUR100GI; Screen: PUS100)
+
+${$1$}$$}$$}$0$}$15041$}$PUS100-PB-PRE-OK-HOOK$}$5/7/2012 8:46:34 AM$}$(Program: PUR100GI; Screen: PUS100)
+
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Quote Number: 3676
+Customer Name: VCE Company LLC (Acadia)
+Reference Number: VCE010-5220121454-1
+Title: PO Receipt Mods
+
+Program.Sub.Comments.End
+
